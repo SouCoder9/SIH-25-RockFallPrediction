@@ -1,9 +1,13 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from PIL import Image
+import io
+import base64
 
 # Page config
 st.set_page_config(page_title="AI Rockfall Risk Assessment System", layout="wide")
@@ -180,6 +184,21 @@ st.markdown("""
         margin: 20px 0;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     }
+    .image-container {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    .image-analysis {
+        background: linear-gradient(135deg, #e6f7ff 0%, #b3e0ff 100%);
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        border-left: 4px solid #0066cc;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -206,9 +225,38 @@ if 'slope_angle' not in st.session_state:
     st.session_state.slope_angle = 30
 if 'rock_type' not in st.session_state:
     st.session_state.rock_type = "Limestone"
+if 'uploaded_image' not in st.session_state:
+    st.session_state.uploaded_image = None
+if 'image_analysis' not in st.session_state:
+    st.session_state.image_analysis = {}
+
+# Function to analyze uploaded image
+def analyze_image(uploaded_image):
+    # This is a placeholder function that simulates image analysis
+    # In a real application, you would use computer vision techniques here
+    
+    analysis_results = {
+        "slope_steepness": np.random.randint(30, 80),
+        "rock_fractures": np.random.randint(20, 90),
+        "vegetation_cover": np.random.randint(10, 80),
+        "rock_type_confidence": np.random.randint(60, 95),
+        "erosion_signs": np.random.randint(10, 70)
+    }
+    
+    return analysis_results
 
 # Function to calculate risk
-def calculate_risk(rainfall, snowfall, wind_speed, temperature, elevation, fracture_spacing, fracture_orientation, slope_angle, rock_type):
+def calculate_risk(rainfall, snowfall, wind_speed, temperature, elevation, 
+                   fracture_spacing, fracture_orientation, slope_angle, rock_type, image_analysis):
+    
+    # Adjust parameters based on image analysis if available
+    image_modifier = 1.0
+    if image_analysis:
+        # Use image analysis to adjust parameters
+        image_modifier = 1.0 + (image_analysis.get("slope_steepness", 50) / 100 - 0.5) * 0.3
+        fracture_spacing = fracture_spacing * (1.0 - image_analysis.get("rock_fractures", 50) / 200)
+        slope_angle = slope_angle * (1.0 + image_analysis.get("slope_steepness", 50) / 100)
+    
     # Calculate individual factor contributions (0-100 scale)
     rainfall_contrib = min(rainfall / 50 * 100, 100)  # 50mm rainfall = 100%
     snowfall_contrib = min(snowfall / 30 * 100, 100)  # 30cm snowfall = 100%
@@ -238,6 +286,12 @@ def calculate_risk(rainfall, snowfall, wind_speed, temperature, elevation, fract
     }
     rock_contrib = rock_factors.get(rock_type, 50)
     
+    # Apply image analysis modifier
+    if image_analysis:
+        fracture_contrib *= image_modifier
+        slope_contrib *= image_modifier
+        rock_contrib *= (1.0 + (image_analysis.get("rock_type_confidence", 50) / 100 - 0.5) * 0.2)
+    
     # Calculate individual contributions for display (as percentages)
     contributions = {
         "Rainfall Impact": rainfall_contrib,
@@ -249,16 +303,22 @@ def calculate_risk(rainfall, snowfall, wind_speed, temperature, elevation, fract
         "Temperature Effects": temp_contrib
     }
     
+    # Add image analysis factors if available
+    if image_analysis:
+        contributions["Image Analysis: Slope"] = image_analysis.get("slope_steepness", 0)
+        contributions["Image Analysis: Fractures"] = image_analysis.get("rock_fractures", 0)
+    
     # Calculate weighted risk score (0-100)
     weights = {
-        'rainfall': 0.15,
-        'snowfall': 0.10,
+        'rainfall': 0.12,
+        'snowfall': 0.08,
         'wind_speed': 0.05,
-        'temperature': 0.10,
-        'elevation': 0.10,
-        'fracture_density': 0.25,
-        'slope_angle': 0.20,
-        'rock_type': 0.05
+        'temperature': 0.08,
+        'elevation': 0.08,
+        'fracture_density': 0.22,
+        'slope_angle': 0.18,
+        'rock_type': 0.05,
+        'image_analysis': 0.14 if image_analysis else 0
     }
     
     weighted_risk = (
@@ -272,19 +332,30 @@ def calculate_risk(rainfall, snowfall, wind_speed, temperature, elevation, fract
         rock_contrib * weights['rock_type']
     )
     
+    # Add image analysis contribution if available
+    if image_analysis:
+        image_risk = (
+            image_analysis.get("slope_steepness", 0) * 0.6 +
+            image_analysis.get("rock_fractures", 0) * 0.4
+        ) * weights['image_analysis']
+        weighted_risk += image_risk
+    
+    # Ensure risk is within bounds
+    weighted_risk = min(max(weighted_risk, 0), 100)
+    
     # Determine risk level
     if weighted_risk >= 75:
         risk_level = "CRITICAL"
-        confidence = 85
+        confidence = 85 + (len(image_analysis) * 2 if image_analysis else 0)
     elif weighted_risk >= 50:
         risk_level = "HIGH"
-        confidence = 80
+        confidence = 80 + (len(image_analysis) * 2 if image_analysis else 0)
     elif weighted_risk >= 25:
         risk_level = "MODERATE"
-        confidence = 75
+        confidence = 75 + (len(image_analysis) * 2 if image_analysis else 0)
     else:
         risk_level = "LOW"
-        confidence = 70
+        confidence = 70 + (len(image_analysis) * 2 if image_analysis else 0)
     
     return weighted_risk, risk_level, confidence, contributions
 
@@ -428,6 +499,29 @@ with st.form("risk_assessment_form"):
                   3 if st.session_state.rock_type == "Granite" else 4
         )
         
+        st.markdown("### Upload Slope Image (Optional)")
+        uploaded_file = st.file_uploader("Upload an image of the slope for analysis", type=['jpg', 'jpeg', 'png'])
+        
+        if uploaded_file is not None:
+            # Store the uploaded image
+            st.session_state.uploaded_image = uploaded_file
+            # Analyze the image
+            st.session_state.image_analysis = analyze_image(uploaded_file)
+            
+            # Display the uploaded image
+            image = Image.open(uploaded_file)
+            st.image(image, caption="Uploaded Slope Image", use_column_width=True)
+            
+            # Display image analysis results
+            st.markdown("### Image Analysis Results")
+            st.markdown('<div class="image-analysis">', unsafe_allow_html=True)
+            for factor, value in st.session_state.image_analysis.items():
+                st.write(f"{factor.replace('_', ' ').title()}: {value}%")
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.session_state.uploaded_image = None
+            st.session_state.image_analysis = {}
+        
         # Calculate and Reset buttons
         calc_col, reset_col = st.columns(2)
         with calc_col:
@@ -443,13 +537,16 @@ with st.form("risk_assessment_form"):
                 st.session_state.fracture_orientation = 45
                 st.session_state.slope_angle = 30
                 st.session_state.rock_type = "Limestone"
+                st.session_state.uploaded_image = None
+                st.session_state.image_analysis = {}
                 st.experimental_rerun()
 
 # Calculate risk when button is clicked
 if calculate_btn:
     risk_percentage, risk_level, confidence, contributions = calculate_risk(
         rainfall, snowfall, wind_speed, temperature, elevation, 
-        fracture_spacing, fracture_orientation, slope_angle, rock_type
+        fracture_spacing, fracture_orientation, slope_angle, rock_type,
+        st.session_state.image_analysis
     )
     
     # Store values in session state
@@ -466,6 +563,14 @@ if calculate_btn:
     # Display results
     st.markdown("---")
     st.markdown('<p class="sub-header">Risk Assessment Results</p>', unsafe_allow_html=True)
+    
+    # Display uploaded image if available
+    if st.session_state.uploaded_image is not None:
+        st.markdown("### Uploaded Slope Image")
+        st.markdown('<div class="image-container">', unsafe_allow_html=True)
+        image = Image.open(st.session_state.uploaded_image)
+        st.image(image, caption="Analyzed Slope Image", use_column_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # Display risk level with appropriate styling
     if risk_level == "CRITICAL":
