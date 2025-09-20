@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,6 +7,13 @@ from plotly.subplots import make_subplots
 from PIL import Image
 import io
 import base64
+import os
+from dotenv import load_dotenv
+from pathlib import Path
+from twilio.rest import Client
+
+# Load environment variables from the .env file located next to this script
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
 # Page config
 st.set_page_config(page_title="AI Rockfall Risk Assessment System", layout="wide")
@@ -244,6 +250,81 @@ def analyze_image(uploaded_image):
     }
     
     return analysis_results
+
+############################################
+# Twilio SMS alert helpers
+############################################
+
+def _get_twilio_client():
+    """Return an authenticated Twilio Client if credentials are set, else (None, error)."""
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    if not account_sid or not auth_token:
+        return None, "Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN environment variables"
+    try:
+        return Client(account_sid, auth_token), None
+    except Exception as e:
+        return None, str(e)
+
+def _get_twilio_from_number():
+    """Get the Twilio sender number from env var TWILIO_FROM_NUMBER."""
+    return os.getenv("TWILIO_FROM_NUMBER")
+
+def send_sms_alert(to_number: str, message: str):
+    """Send an SMS using Twilio. Returns (ok: bool, error: Optional[str])."""
+    client, err = _get_twilio_client()
+    if err:
+        return False, err
+    from_number = _get_twilio_from_number()
+    if not from_number:
+        return False, "Missing TWILIO_FROM_NUMBER environment variable"
+    try:
+        client.messages.create(to=to_number, from_=from_number, body=message)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+def build_precaution_message(risk_level: str, risk_percentage: float) -> str:
+    """Return a concise SMS message with risk and actionable precautions."""
+    base = f"Rockfall Risk: {risk_level} ({risk_percentage:.0f}%). "
+    if risk_level == "CRITICAL":
+        steps = (
+            "Evacuate immediately; Close access; Notify authorities; Deploy monitoring."
+        )
+    elif risk_level == "HIGH":
+        steps = (
+            "Restrict access; Increase monitoring; Install warning signs; Prepare evacuation plan."
+        )
+    elif risk_level == "MODERATE":
+        steps = (
+            "Maintain monitoring; Set warnings; Inspect bi-weekly; Be vigilant after storms."
+        )
+    else:  # LOW
+        steps = (
+            "Continue standard monitoring; Maintain safety protocols; Review plans quarterly."
+        )
+    return base + "Precautions: " + steps
+
+############################################
+# Alerts configuration (Sidebar)
+############################################
+st.sidebar.markdown("## Alerts")
+enable_sms = st.sidebar.checkbox("Enable SMS alerts", value=False)
+default_to = os.getenv("ALERT_TO_NUMBER", "")
+alert_to_number = st.sidebar.text_input("Recipient phone (E.164, e.g., +15551234567)", value=default_to)
+
+# Persist in session state
+st.session_state["enable_sms"] = enable_sms
+st.session_state["alert_to_number"] = alert_to_number
+
+if enable_sms:
+    # Provide quick diagnostics on credentials
+    client, cred_err = _get_twilio_client()
+    from_num = _get_twilio_from_number()
+    if cred_err or not from_num:
+        st.sidebar.error("Twilio not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER in environment.")
+    else:
+        st.sidebar.info(f"Alerts will be sent from {from_num} to {alert_to_number or 'N/A'}")
 
 # Function to calculate risk
 def calculate_risk(rainfall, snowfall, wind_speed, temperature, elevation, 
@@ -716,3 +797,16 @@ if calculate_btn:
             </ul>
         </div>
         """, unsafe_allow_html=True)
+    
+    # Send SMS alert after every prediction when SMS is enabled
+    if st.session_state.get("enable_sms"):
+        to_num = st.session_state.get("alert_to_number", "").strip()
+        if to_num:
+            alert_message = build_precaution_message(risk_level, risk_percentage)
+            ok, err = send_sms_alert(to_num, alert_message)
+            if ok:
+                st.success(f"SMS alert sent to {to_num}")
+            else:
+                st.error(f"Failed to send SMS alert: {err}")
+        else:
+            st.warning("SMS alerts enabled, but no recipient number provided.")

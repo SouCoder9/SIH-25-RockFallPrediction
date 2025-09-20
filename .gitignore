@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Model files (if you want to exclude them)
+# rockfall_prototype/model/*.pkl
+
+# Logs
+*.log
+
+# Local data files
+*.csv
+!rockfall_prototype/data/balanced_synthetic_rockfall_data.csv
+
+# OS specific
+.DS_Store
+Thumbs.db
