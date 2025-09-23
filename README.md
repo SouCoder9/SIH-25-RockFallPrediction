@@ -302,7 +302,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 ## 📞 Contact & Support
 
 For questions, suggestions, or support:
-- 📧 **Email**: [your-email@domain.com]
+- 📧 **Email**: [soubhadra1234@gmail.com]
 - 🐦 **GitHub Issues**: [Create an Issue](https://github.com/SouCoder9/SIH-25-RockFallPrediction/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/SouCoder9/SIH-25-RockFallPrediction/discussions)
 
